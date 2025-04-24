@@ -1,0 +1,66 @@
+# This template defines the authentication infrastructure for the multiplayer card game
+# It creates:
+# - A Cognito User Pool for user management
+# - A User Pool Client for application authentication
+# - An IAM role for Cognito to access player data
+# The setup includes secure password policies and custom user attributes
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Core Resources for Ranch HandMultiplayer Card Game
+
+Resources:
+  # Cognito User Pool Configuration
+  # Creates a secure user directory with:
+  # - Email-based authentication
+  # - Strong password requirements
+  # - Custom user attributes
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: RanchHandUserPool
+      # Auto-verification of email addresses
+      AutoVerifiedAttributes:
+        - email
+      # Use email as the username for user-friendly login
+      UsernameAttributes:
+        - email
+      # TODO: Add Google Play Games Auth
+      # TODO: Add Apple Game Center Auth
+      # Password policy for enhanced security
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  # User Pool Client Configuration
+  # Creates an application client with:
+  # - Password-based authentication
+  # - Refresh token support
+  # - Enhanced security features
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: RanchHandClient
+      UserPoolId: !Ref UserPool
+      # No client secret for easier client-side implementation
+      GenerateSecret: false
+      # Supported authentication flows
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      # Enhanced security to prevent user enumeration
+      PreventUserExistenceErrors: ENABLED
+
+# Outputs section - These values are used by other services for authentication
+Outputs:
+  CognitoUserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !Ref UserPool
+
+  CognitoAppClientId:
+    Description: ID of the Cognito User Pool Client
+    Value: !Ref UserPoolClient

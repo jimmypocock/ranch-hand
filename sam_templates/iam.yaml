@@ -1,0 +1,158 @@
+# AWS SAM template for IAM Identity Center (formerly SSO) permission sets
+# This template defines three distinct permission sets for different roles in the card game infrastructure
+# Each permission set has specific AWS service access levels based on the role's responsibilities
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: IAM Identity Center Permission Sets for Card Game Infrastructure
+
+# Template Parameters - These values must be provided when deploying the template
+Parameters:
+  # The Identity Center instance ARN is required to create permission sets
+  # This is a unique identifier for your organization's Identity Center instance
+  IdentityCenterInstanceArn:
+    Type: String
+    Description: The ARN of your IAM Identity Center instance
+    # You'll need to get this from the console after enabling Identity Center
+    # Format looks like: arn:aws:sso:::instance/ssoins-12345678910abcdef
+
+  DevGroupId:
+    Type: String
+    Description: The ID for the RanchHand-Dev group in IAM Identity Center
+
+  ProdGroupId:
+    Type: String
+    Description: The ID for the RanchHand-Prod group in IAM Identity Center
+
+  DevAccountId:
+    Type: String
+    Description: The RanchHand-Dev account ID where developer group permissions will be applied
+
+  ProdAccountId:
+    Type: String
+    Description: The RanchHand-Prod account ID where developer group permissions will be applied
+
+# Define reusable permission set configuration
+Mappings:
+  PermissionSetConfig:
+    Base:
+      SessionDuration: PT8H
+      ManagedPolicies:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+      InlinePolicy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "cloudformation:*",
+                "s3:*",
+                "apigateway:*",
+                "cognito-idp:*",
+                "sns:*",
+                "gamelift:*",
+                "iam:PassRole",
+                "iam:GetRole",
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:PutRolePolicy",
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "cloudwatch:*"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+
+# Define the permission set configuration as a separate resource
+Resources:
+  # First permission set instance
+  DevPermissionSet:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: RanchHand-Dev
+      Description: "Permissions for developing and deploying infrastructure in Dev environment."
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !FindInMap [PermissionSetConfig, Base, SessionDuration]
+      ManagedPolicies: !FindInMap [PermissionSetConfig, Base, ManagedPolicies]
+      InlinePolicy: !FindInMap [PermissionSetConfig, Base, InlinePolicy]
+
+  # Second permission set instance
+  ProdPermissionSet:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: RanchHand-Prod
+      Description: "Permissions for developing and deploying infrastructure in Prod environment."
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      SessionDuration: !FindInMap [PermissionSetConfig, Base, SessionDuration]
+      ManagedPolicies: !FindInMap [PermissionSetConfig, Base, ManagedPolicies]
+      InlinePolicy: !FindInMap [PermissionSetConfig, Base, InlinePolicy]
+
+  # Assign Dev permission set to RanchHand-Dev account
+  DevAccountAssignment:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      PermissionSetArn: !GetAtt DevPermissionSet.PermissionSetArn
+      PrincipalId: !Ref DevGroupId
+      PrincipalType: GROUP
+      TargetId: !Ref DevAccountId
+      TargetType: AWS_ACCOUNT
+
+  # Cognito Authentication Role
+  # This role allows Cognito to:
+  # - Access and update player data in DynamoDB
+  # - Manage user authentication state
+  # - Store user profile information
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RanchHandCognitoPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # DynamoDB permissions for user data management
+              # Allows Cognito to read and write player authentication data
+              # Limited to the Players table to follow least privilege principle
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Players
+
+  # Assign Prod permission set to RanchHand-Prod account
+  ProdAccountAssignment:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !Ref IdentityCenterInstanceArn
+      PermissionSetArn: !GetAtt ProdPermissionSet.PermissionSetArn
+      PrincipalId: !Ref ProdGroupId
+      PrincipalType: GROUP
+      TargetId: !Ref ProdAccountId
+      TargetType: AWS_ACCOUNT
+
+# Outputs section provides important ARNs that may be needed for reference or other templates
+Outputs:
+  DevPermissionSetArn:
+    Description: ARN of the dev permission set
+    Value: !GetAtt DevPermissionSet.PermissionSetArn
+
+  ProdPermissionSetArn:
+    Description: ARN of the prod permission set
+    Value: !GetAtt ProdPermissionSet.PermissionSetArn
+
+  CognitoAuthRoleArn:
+    Description: ARN for the Cognito authentication role
+    Value: !GetAtt CognitoAuthRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CognitoAuthRoleArn"

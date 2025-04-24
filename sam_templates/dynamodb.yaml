@@ -1,0 +1,191 @@
+# This template defines the database infrastructure for the multiplayer card game
+# It creates five DynamoDB tables with optimized schemas for:
+# - Player management and statistics
+# - Game session tracking
+# - Individual game records
+# - Player-session relationships
+# - Player-game interactions
+#
+# Key features:
+# - Pay-per-request billing for cost efficiency
+# - Global secondary indexes for flexible querying
+# - Composite keys for efficient data relationships
+# - Optimized schemas for game state management
+#
+# Table relationships:
+# Players <-> PlayerSessions <-> Sessions
+# Players <-> PlayerGames <-> Games
+# Sessions <-> Games
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM template for DynamoDB tables used in a multiplayer card game with AWS GameLift integration.
+  Creates five tables: Players, Sessions, Games, PlayerSessions, and PlayerGames.
+
+Resources:
+  # Players Table
+  # - Stores player information, token balances, and gameplay statistics
+  # - PlayerId (Partition Key): Unique player identifier (usually Cognito ID)
+  # - Username (GSI1): For looking up players by username
+  PlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Players
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PlayerId
+          AttributeType: S
+        - AttributeName: Username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PlayerId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: Username
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # Sessions Table
+  # - Tracks game sessions with pot sizes, player counts, and GameLift data
+  # - SessionId (Partition Key): Unique session identifier
+  # - Status (GSI1): For querying sessions by status
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: SessionId
+          AttributeType: S
+        - AttributeName: Status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: SessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: Status
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # Games Table
+  # - Records individual card games within sessions
+  # - GameId (Partition Key): Unique game identifier
+  # - SessionId-GameNumber (GSI1): For querying games by session
+  # Note: In application code, populate SessionId-GameNumber as "{SessionId}-{GameNumber}"
+  GamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Games
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: GameId
+          AttributeType: S
+        - AttributeName: SessionId-GameNumber
+          AttributeType: S
+      KeySchema:
+        - AttributeName: GameId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: SessionId-GameNumber
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # PlayerSessions Table
+  # - Links players to sessions and tracks performance within each session
+  # - PlayerId-SessionId (Partition Key): Composite key linking player to session
+  # - PlayerId (GSI1): Index to find all players in a session
+  # - SessionId (GSI1): Index to find all players in a session
+  # Note: In code, populate PlayerId-SessionId as "{PlayerId}-{SessionId}"
+  PlayerSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: PlayerSessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PlayerId-SessionId
+          AttributeType: S
+        - AttributeName: PlayerId
+          AttributeType: S
+        - AttributeName: SessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PlayerId-SessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: PlayerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: SessionId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # PlayerGames Table
+  # - Tracks player actions and outcomes in individual games
+  # - PlayerId-GameId (Partition Key): Composite key linking player to game
+  # - GameId (GSI1): Index to find all player records for a game
+  # - PlayerId-SessionId (GSI2): Index to find all games by a player in a session
+  # Note: In code, populate PlayerId-GameId as "{PlayerId}-{GameId}"
+  # Note: In code, populate PlayerId-SessionId as "{PlayerId}-{SessionId}"
+  PlayerGamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: PlayerGames
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PlayerId-GameId
+          AttributeType: S
+        - AttributeName: GameId
+          AttributeType: S
+        - AttributeName: PlayerId-SessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PlayerId-GameId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GameId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: PlayerId-SessionId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+# Outputs section - These values are used by other services to access the tables
+Outputs:
+  # Outputs section for easy reference to table names after deployment
+  PlayersTableName:
+    Description: Name of the Players table
+    Value: !Ref PlayersTable
+  SessionsTableName:
+    Description: Name of the Sessions table
+    Value: !Ref SessionsTable
+  GamesTableName:
+    Description: Name of the Games table
+    Value: !Ref GamesTable
+  PlayerSessionsTableName:
+    Description: Name of the PlayerSessions table
+    Value: !Ref PlayerSessionsTable
+  PlayerGamesTableName:
+    Description: Name of the PlayerGames table
+    Value: !Ref PlayerGamesTable

@@ -1,0 +1,11 @@
+{
+  "HowToUse": "Rename this file to env.json and add your SAM template variables.",
+  "AWSAccount": "",
+  "StackName": "",
+  "S3Bucket": "",
+  "IdentityCenterInstanceArn": "",
+  "DevGroupId": "",
+  "ProdGroupId": "",
+  "DevAccountId": "",
+  "ProdAccountId": ""
+}
